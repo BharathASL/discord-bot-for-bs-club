@@ -103,7 +103,7 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
                     valid_discord_roles_map["clubMember"][1]
                 ]
         else:
-            role_names = ["Guest"]
+            role_names = [valid_discord_roles_map.get("guest")[1]]
         # Convert each element in role_names to a discord role object
         roles = [discord.utils.get(guild.roles, name=rn) for rn in role_names]
         # Filter out None values (roles not found)

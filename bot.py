@@ -80,7 +80,6 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
         # Assign role
         guild = bot.get_guild(GUILD_ID)
         member = guild.get_member(interaction.user.id)
-        role_name = member_info.get("role")
         
         if is_club_member:
             club_hash_tag_encoded = urllib.parse.quote(CLUB_HASH_TAG)
@@ -96,6 +95,7 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
                 print("❌ You are not a member of Stellar Forge.")
                 await interaction.followup.send("❌ API Error.", ephemeral=True)
                 return
+            role_name = member_info.get("role")
             if role_name:
                 # Assign both the specific club role and the generic club member role
                 role_names = [
@@ -103,6 +103,7 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
                     valid_discord_roles_map["clubMember"][1]
                 ]
         else:
+            role_name = "guest"
             role_names = [valid_discord_roles_map.get("guest")[1]]
         # Convert each element in role_names to a discord role object
         roles = [discord.utils.get(guild.roles, name=rn) for rn in role_names]

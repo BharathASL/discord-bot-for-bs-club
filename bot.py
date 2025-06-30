@@ -7,6 +7,7 @@ import urllib.parse
 from discord import app_commands
 from flask import Flask
 from threading import Thread
+import logging
 
 load_dotenv()
 
@@ -35,6 +36,14 @@ valid_discord_role_names = [v[1] for v in valid_discord_roles_map.values()]
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("discord_bs_register")
+
 
 class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
     def __init__(self, membership: str):
@@ -47,10 +56,10 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
         ))
 
     async def on_submit(self, interaction: discord.Interaction):
+        logger.info(f"TagModal submitted by {interaction.user} (ID: {interaction.user.id}), membership: {self.membership}")
         await interaction.response.defer(ephemeral=True)
         user_input_tag = f"#{self.children[0].value.strip().replace('#', '').upper()}"
         user_input_is_member = self.membership == "yes"
-
         user_input_tag_encoded = urllib.parse.quote(user_input_tag)
 
         # Fetch Brawl Stars data
@@ -60,7 +69,7 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
         res = requests.get(f"https://{BS_ROOT_URL}/v1/players/{user_input_tag_encoded}", headers=headers)
 
         if res.status_code != 200:
-            print(f"❌ API Error {res.status_code}: {res.text}")
+            logger.error(f"API Error {res.status_code}: {res.text}")
             await interaction.followup.send("❌ Invalid player tag or API failure.", ephemeral=True)
             return
 
@@ -69,11 +78,13 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
 
         if user_input_is_member:
             if not is_club_member:
+                logger.info(f"User {interaction.user} is not in the club.")
                 await interaction.followup.send("❌ You're not in Stellar Forge.", ephemeral=True)
                 return
 
         else:
             if is_club_member:
+                logger.info(f"User {interaction.user} said no but is in the club.")
                 await interaction.followup.send("❌ You said no, but you're in Stellar Forge.", ephemeral=True)
                 return
 
@@ -92,7 +103,7 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
 
             member_info = next((m for m in club_data.get("members", []) if m["tag"] == user_input_tag), None)
             if not member_info:
-                print("❌ You are not a member of Stellar Forge.")
+                logger.error("You are not a member of Stellar Forge.")
                 await interaction.followup.send("❌ API Error.", ephemeral=True)
                 return
             role_name = member_info.get("role")
@@ -111,6 +122,7 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
         roles = [r for r in roles if r is not None]
 
         if roles:
+            logger.info(f"Assigning roles {[r.name for r in roles]} to {member.name} (ID: {member.id})")
             # Remove all valid Discord roles before assigning the new one
             roles_need_to_remove = [r for r in member.roles if r.name in valid_discord_role_names and r not in roles]
             await member.remove_roles(*roles_need_to_remove)
@@ -123,9 +135,9 @@ class TagModal(discord.ui.Modal, title="Enter Your Brawl Stars Tag"):
             )
             
             role_info_strs = valid_discord_roles_map.get(role_name, ["", role_name])
-            # {interaction.user.name}
-            await member.edit(nick=f"{role_info_strs[0]}{user_data["name"]}")
+            await member.edit(nick=f"{role_info_strs[0]}{user_data['name']}")
         else:
+            logger.warning(f"Role(s) not found for user {member.name} (ID: {member.id})")
             await interaction.followup.send("❌ Role not found. Ask an admin to set up roles.", ephemeral=True)
 
 
@@ -154,6 +166,7 @@ class DropdownView(discord.ui.View):
 )
 # @app_commands.checks.has_permissions(administrator=True)
 async def setup_register(interaction: discord.Interaction):
+    logger.info(f"setup_register command triggered by {interaction.user} (ID: {interaction.user.id})")
     embed = discord.Embed(
         title="🔐 Register to Access the Server",
         description="Choose your membership status below to start verification.",
@@ -165,13 +178,13 @@ async def setup_register(interaction: discord.Interaction):
 # Sync the slash commands on bot startup
 @bot.event
 async def on_ready():
-    print(f"Bot is online. Logged in as {bot.user}")
+    logger.info(f"on_ready triggered. Bot is online. Logged in as {bot.user} (ID: {bot.user.id})")
     try:
         guild = discord.Object(id=GUILD_ID)
         synced = await bot.tree.sync(guild=guild)
-        print(f"Synced {len(synced)} command(s) to guild {GUILD_ID}.")
+        logger.info(f"Synced {len(synced)} command(s) to guild {GUILD_ID}.")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
+        logger.error(f"Failed to sync commands: {e}")
 
 
 
@@ -180,11 +193,12 @@ async def on_member_join(member):
     guild = member.guild
     role_name = valid_discord_roles_map["unverified"][1]
     role = discord.utils.get(guild.roles, name=role_name)
+    logger.info(f"on_member_join triggered for {member} (ID: {member.id}) in guild '{guild.name}' (ID: {guild.id})")
     if role:
         await member.add_roles(role)
-        print(f"Assigned '{role_name}' role to {member.name}")
+        logger.info(f"Assigned '{role_name}' role to {member.name} (ID: {member.id})")
     else:
-        print(f"'{role_name}' role not found")
+        logger.warning(f"'{role_name}' role not found in guild '{guild.name}' (ID: {guild.id})")
 
 
 def keep_alive():
@@ -193,6 +207,10 @@ def keep_alive():
     @app.route('/')
     def home():
         return "I'm alive!"
+
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)  # Suppress request logs
 
     def run():
         app.run(host='0.0.0.0', port=8080)
